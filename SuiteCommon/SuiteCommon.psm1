@@ -53,6 +53,10 @@ function Initialize-Logging {
         [switch]$VerboseLogging
     )
 
+    # A whitespace-only path reaches Set-Content as a filename Windows strips
+    # to nothing and throws DirectoryNotFoundException; treat it as no path.
+    if (-not [string]::IsNullOrWhiteSpace($LogPath)) { $LogPath = $LogPath.Trim() } else { $LogPath = $null }
+
     $script:__SuiteLogPath = $LogPath
 
     $envVerbose = $env:SUITE_VERBOSE
@@ -116,7 +120,36 @@ function Write-Log {
     }
 
     if ($script:__SuiteLogPath) {
-        Add-Content -LiteralPath $script:__SuiteLogPath -Value $formatted -Encoding UTF8 -ErrorAction SilentlyContinue
+        # Concurrent writers (a background runspace sharing the shell's log
+        # via -Attach) collide on the per-line open/close and the sharing
+        # violation silently drops the line - measured at 35-86% loss under
+        # contention. A named mutex keyed on the path serializes every
+        # SuiteCommon writer in the session; the retry loop still covers
+        # non-SuiteCommon writers holding the file.
+        $mutexName = 'SuiteCommonLog_' + ($script:__SuiteLogPath.ToLowerInvariant() -replace '[\\/:]', '_')
+        $mutex = $null
+        $owned = $false
+        try {
+            $mutex = New-Object System.Threading.Mutex($false, $mutexName)
+            try { $owned = $mutex.WaitOne(2000) }
+            catch [System.Threading.AbandonedMutexException] { $owned = $true }
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+                try {
+                    Add-Content -LiteralPath $script:__SuiteLogPath -Value $formatted -Encoding UTF8 -ErrorAction Stop
+                    break
+                }
+                catch {
+                    if ($attempt -lt 3) { Start-Sleep -Milliseconds 5 }
+                }
+            }
+        }
+        catch { $null = $_ }
+        finally {
+            if ($mutex) {
+                if ($owned) { try { $mutex.ReleaseMutex() } catch { $null = $_ } }
+                $mutex.Dispose()
+            }
+        }
     }
 }
 
@@ -242,7 +275,12 @@ function Connect-CMSite {
         [switch]$SkipSiteVerification
     )
 
-    $script:OriginalLocation = Get-Location
+    # Capture only on a fresh connect: a reconnect/site-switch without an
+    # intervening Disconnect-CMSite would otherwise overwrite the saved
+    # location with the previous site's drive and lose the real origin.
+    if (-not $script:ConnectedSiteCode) {
+        $script:OriginalLocation = Get-Location
+    }
 
     if (-not (Get-Module ConfigurationManager -ErrorAction SilentlyContinue)) {
         $resolved = if (-not [string]::IsNullOrWhiteSpace($CMModulePath)) { $CMModulePath } else { Resolve-ConfigurationManagerModulePath }
@@ -253,7 +291,12 @@ function Connect-CMSite {
         }
 
         try {
-            Import-Module $resolved -Force -DisableNameChecking -ErrorAction Stop
+            # -Global: this import runs in SuiteCommon's session state; without
+            # it the CM cmdlets are visible only inside SuiteCommon, and every
+            # consumer tool module's own Get-CM* calls fail with "term not
+            # recognized" - the same visibility rule that forces -Scope Global
+            # on the PSDrive below.
+            Import-Module $resolved -Force -DisableNameChecking -Global -ErrorAction Stop
             Write-Log "Imported ConfigurationManager module from $resolved"
         }
         catch {
@@ -306,7 +349,7 @@ function Connect-CMSite {
             Set-Location "${SiteCode}:" -ErrorAction Stop
         }
         catch {
-            Write-Log "Failed to enter site drive ${SiteCode}: $_" -Level ERROR
+            Write-Log "Failed to enter site drive $SiteCode : $_" -Level ERROR
             return $false
         }
     }
@@ -446,7 +489,9 @@ function Read-SuiteSettings {
 
     if (Test-Path -LiteralPath $Path) {
         try {
-            $loaded = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            # -Encoding UTF8: on 5.1 the default decoder mangles non-ASCII in
+            # BOM-less UTF-8 files (hand-edited settings) without any error.
+            $loaded = Get-Content -LiteralPath $Path -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
             foreach ($k in @($settings.Keys)) {
                 $val = $loaded.$k
                 if ($null -ne $val) { $settings[$k] = $val }
@@ -471,6 +516,10 @@ function Save-SuiteSettings {
     )
 
     try {
+        $parentDir = Split-Path -Path $Path -Parent
+        if ($parentDir -and -not (Test-Path -LiteralPath $parentDir)) {
+            New-Item -ItemType Directory -Path $parentDir -Force -ErrorAction Stop | Out-Null
+        }
         # -ErrorAction Stop: Set-Content fails non-terminating by default,
         # which would skip the catch and report success on a failed write.
         $Settings | ConvertTo-Json -Depth $Depth | Set-Content -LiteralPath $Path -Encoding UTF8 -ErrorAction Stop
