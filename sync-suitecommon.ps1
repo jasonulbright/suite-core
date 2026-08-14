@@ -27,7 +27,13 @@ if (-not $Consumer -or $Consumer.Count -eq 0) {
     $Consumer = @(
         (Join-Path $projectsRoot 'dp-content-manager'),
         (Join-Path $projectsRoot 'collection-manager'),
-        (Join-Path $projectsRoot 'site-hygiene')
+        (Join-Path $projectsRoot 'site-hygiene'),
+        (Join-Path $projectsRoot 'deployment-helper'),
+        (Join-Path $projectsRoot 'detection-tester'),
+        (Join-Path $projectsRoot 'installer-analysis'),
+        (Join-Path $projectsRoot 'maintenance-window-manager'),
+        (Join-Path $projectsRoot 'mecm-health-dashboard'),
+        (Join-Path $projectsRoot 'collection-and-compliance-manager')
     )
 }
 
