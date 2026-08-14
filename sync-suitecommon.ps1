@@ -14,6 +14,7 @@
     .\sync-suitecommon.ps1 -Check
     .\sync-suitecommon.ps1 -Consumer 'C:\projects\dp-content-manager'
 #>
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification='Operator-facing console tool; per-file OK/DRIFT/SYNCED/FAILED lines are the product.')]
 param(
     [string[]]$Consumer = @(),
     [switch]$Check

@@ -95,6 +95,8 @@ function Write-Log {
 
         -Quiet suppresses all console output but still writes to the log file.
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidUsingWriteHost', '', Justification='Write-Log is the single console-surfacing path; Write-Host is the deliberate contract so lines reach both the host and the file log.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSAvoidOverwritingBuiltInCmdlets', '', Justification='Write-Log is the suite-wide logging contract on Windows PowerShell 5.1, which ships no Write-Log.')]
     param(
         [AllowEmptyString()]
         [Parameter(Mandatory, Position = 0)]
@@ -316,6 +318,18 @@ function Connect-CMSite {
     # is still half-initialized races the module's own provider setup and
     # surfaces as the Get-CM* autoload failure.
     $siteDrive = Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue
+
+    if ($siteDrive -and -not [string]::IsNullOrWhiteSpace($provider) -and ([string]$siteDrive.Root -ne $provider)) {
+        # Same site code bound to a different SMS Provider (the provider was
+        # changed in a tool's options): rebind to the requested one. Stepping
+        # off the drive first is mandatory - the drive you are located in
+        # cannot be removed.
+        Write-Log "PSDrive ${SiteCode}: points at '$($siteDrive.Root)', not '$provider' -- recreating." -Level WARN
+        try { Set-Location -LiteralPath "$env:SystemDrive\" -ErrorAction SilentlyContinue } catch { $null = $_ }
+        Remove-PSDrive -Name $SiteCode -PSProvider CMSite -Force -ErrorAction SilentlyContinue
+        $siteDrive = $null
+    }
+
     if ($siteDrive) {
         try {
             Set-Location "${SiteCode}:" -ErrorAction Stop
@@ -325,6 +339,7 @@ function Connect-CMSite {
             # is gone (e.g. provider restart). Tear it down and rebuild.
             Write-Log ("Set-Location {0}: failed on existing drive ({1}); recreating it." -f $SiteCode, $_.Exception.Message) -Level WARN
             if ([string]::IsNullOrWhiteSpace($provider)) { $provider = [string]$siteDrive.Root }
+            try { Set-Location -LiteralPath "$env:SystemDrive\" -ErrorAction SilentlyContinue } catch { $null = $_ }
             Remove-PSDrive -Name $SiteCode -Force -ErrorAction SilentlyContinue
             $siteDrive = $null
         }
@@ -479,6 +494,7 @@ function Read-SuiteSettings {
         cannot smuggle unexpected state into a tool. A missing or
         unreadable file returns the defaults unchanged.
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification='Reads the full settings hashtable by design.')]
     param(
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][hashtable]$Defaults
@@ -509,6 +525,7 @@ function Save-SuiteSettings {
         success, $false on failure (failure is logged, never thrown -
         losing a preference write must not take the tool down).
     #>
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseSingularNouns', '', Justification='Writes the full settings hashtable by design.')]
     param(
         [Parameter(Mandatory)][string]$Path,
         [Parameter(Mandatory)][hashtable]$Settings,
