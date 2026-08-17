@@ -714,27 +714,32 @@ function Save-WindowState {
         [Parameter(Mandatory)][string]$Path,
         [hashtable]$ExtraState
     )
-    $state = @{}
-    # RestoreBounds, not Left/Width, when not Normal: a maximized close would
-    # otherwise persist full-screen extents as the "normal" geometry.
-    if ($Window.WindowState -eq [System.Windows.WindowState]::Normal) {
-        $state.Left   = [int]$Window.Left
-        $state.Top    = [int]$Window.Top
-        $state.Width  = [int]$Window.Width
-        $state.Height = [int]$Window.Height
-    }
-    else {
-        $state.Left   = [int]$Window.RestoreBounds.Left
-        $state.Top    = [int]$Window.RestoreBounds.Top
-        $state.Width  = [int]$Window.RestoreBounds.Width
-        $state.Height = [int]$Window.RestoreBounds.Height
-    }
-    $state.Maximized = ($Window.WindowState -eq [System.Windows.WindowState]::Maximized)
-    if ($ExtraState) {
-        foreach ($k in $ExtraState.Keys) { $state[$k] = $ExtraState[$k] }
-    }
     try {
-        Set-Content -LiteralPath $Path -Value ($state | ConvertTo-Json) -Encoding UTF8
+        $state = @{}
+        # RestoreBounds, not Left/Width, when not Normal: a maximized close
+        # would otherwise persist full-screen extents as normal geometry.
+        if ($Window.WindowState -eq [System.Windows.WindowState]::Normal) {
+            $raw = @([double]$Window.Left, [double]$Window.Top, [double]$Window.Width, [double]$Window.Height)
+        }
+        else {
+            $rb = $Window.RestoreBounds
+            $raw = @([double]$rb.Left, [double]$rb.Top, [double]$rb.Width, [double]$rb.Height)
+        }
+        # A never-shown window reads NaN (or an Empty rect's infinities);
+        # casting those to [int] throws inside the caller's Closing handler.
+        # Nothing meaningful exists to persist, so skip the save entirely.
+        foreach ($v in $raw) {
+            if ([double]::IsNaN($v) -or [double]::IsInfinity($v)) { return }
+        }
+        $state.Left   = [int]$raw[0]
+        $state.Top    = [int]$raw[1]
+        $state.Width  = [int]$raw[2]
+        $state.Height = [int]$raw[3]
+        $state.Maximized = ($Window.WindowState -eq [System.Windows.WindowState]::Maximized)
+        if ($ExtraState) {
+            foreach ($k in $ExtraState.Keys) { $state[$k] = $ExtraState[$k] }
+        }
+        Set-Content -LiteralPath $Path -Value ($state | ConvertTo-Json -Depth 5) -Encoding UTF8
     } catch { $null = $_ }
 }
 
@@ -919,8 +924,9 @@ function Update-SidebarButtonTheme {
 
 function Set-ButtonTheme {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseShouldProcessForStateChangingFunctions', '', Justification='Mutates in-window brush properties only.')]
-    param([bool]$IsDark)
+    param([Nullable[bool]]$IsDark)
     $ctx = Get-SuiteThemeContext
+    if ($null -eq $IsDark) { $IsDark = [bool](& $ctx.IsDarkGetter) }
     $b = $ctx.Brushes
     if ($IsDark) {
         foreach ($btn in @($ctx.WorkflowButtons)) { $btn.Background = $b.DarkButtonBg; $btn.BorderBrush = $b.DarkButtonBorder }
@@ -1066,6 +1072,16 @@ function Show-ThemedMessage {
 
     $script:ThemedMessageResult = switch ($Buttons) { 'YesNo' { 'No' } default { 'Cancel' } }
 
+    # A collapsed IsCancel button never registers its access key, so Escape
+    # is dead on OK-only dialogs without this handler.
+    $dlg.Add_PreviewKeyDown({
+        param($s, $e)
+        if ($e.Key -eq [System.Windows.Input.Key]::Escape) {
+            $e.Handled = $true
+            $s.Close()
+        }
+    })
+
     # No GetNewClosure -- Show-ThemedMessage is still on the stack blocked on
     # ShowDialog, so $script: writes to $ThemedMessageResult reach this
     # module's script scope naturally. GetNewClosure would silently drop them.
@@ -1137,7 +1153,16 @@ function Show-ConfirmDialog {
     $dlg.Owner = $Owner
     $dlg.Title = $Title
     Install-TitleBarDragFallback -Window $dlg
-    Set-DialogTheme -Dialog $dlg
+    # Owner-driven theming, same as Show-ThemedMessage: this dialog stays
+    # safe to call before Initialize-SuiteTheme has run.
+    $theme = [ControlzEx.Theming.ThemeManager]::Current.DetectTheme($Owner)
+    if ($theme) { [void][ControlzEx.Theming.ThemeManager]::Current.ChangeTheme($dlg, $theme) }
+    try {
+        $dlg.WindowTitleBrush          = $Owner.WindowTitleBrush
+        $dlg.NonActiveWindowTitleBrush = $Owner.NonActiveWindowTitleBrush
+        $dlg.GlowBrush                 = $Owner.GlowBrush
+        $dlg.NonActiveGlowBrush        = $Owner.NonActiveGlowBrush
+    } catch { $null = $_ }
     $dlg.FindName('txtMsg').Text = $Message
     $dlg.FindName('btnYes').Add_Click({ $dlg.DialogResult = $true;  $dlg.Close() })
     $dlg.FindName('btnNo').Add_Click({  $dlg.DialogResult = $false; $dlg.Close() })
