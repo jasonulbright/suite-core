@@ -17,6 +17,11 @@ installation, no gallery dependency.
 | Logging | `Initialize-Logging` (`-Attach`, `-VerboseLogging`), `Write-Log` (INFO/WARN/ERROR/DEBUG, `-Quiet`), `Write-LogErrorRecord` |
 | CM connection | `Connect-CMSite`, `Disconnect-CMSite`, `Test-CMConnection`, `Get-CMConnectionInfo`, `Resolve-ConfigurationManagerModulePath`, `Test-CMSiteCodeMatchesProvider` |
 | Settings | `Read-SuiteSettings` (flat defaults merge), `Save-SuiteSettings` |
+| Window chrome | `Install-TitleBarDragFallback` (+ the WM_NCHITTEST hook family), `Save-WindowState`, `Restore-WindowState` |
+| Theming | `Initialize-SuiteTheme`, `Update-TitleBarBrushes`, `Update-SidebarButtonTheme`, `Set-ButtonTheme`, `Set-DialogTheme` |
+| Dialogs | `Show-ThemedMessage`, `Show-ConfirmDialog` |
+| Background work | `New-SuiteBgRunspace`, `Stop-SuiteBgWork`, `Close-SuiteBgRunspace` |
+| CM widgets | `Build-CollectionTree`, `Show-CollectionPickerDialog` |
 | Identity | `Get-SuiteCommonVersion` |
 
 `Connect-CMSite` imports the ConfigurationManager module (from
@@ -28,6 +33,18 @@ verifies the site with `Get-CMSite` (skippable via
 `Initialize-Logging -VerboseLogging` or the `SUITE_VERBOSE` environment
 variable; a provider machine can be supplied via parameter or
 `SUITE_CM_PROVIDER`.
+
+## Launcher
+
+`start-suite.ps1` is a thin WPF shell: one tile per installed suite
+tool, discovered as sibling folders of this repository (override the
+root in `suite.settings.json`), with each tool's version read from its
+CHANGELOG. Every tile launches its tool as a separate process. The
+connection profile — site code and SMS provider — is entered once and
+handed to each launch through the `SUITE_CM_PROVIDER` /
+`SUITE_CM_SITECODE` environment variables; `Connect-CMSite` falls back
+to the provider variable, so tools connect without per-tool
+configuration. The launcher embeds no tools and hosts no plugins.
 
 ## Consuming
 
