@@ -1,9 +1,9 @@
 @{
     RootModule        = 'SuiteCommon.psm1'
-    ModuleVersion     = '0.1.0'
+    ModuleVersion     = '0.2.0'
     GUID              = '7c1f2a9e-4b3d-4f8a-9c6e-2d5b8e1a7f40'
     Author            = 'Jason Ulbright'
-    Description       = 'Shared core for the MECM tool suite: logging, CM site connection, settings persistence.'
+    Description       = 'Shared core for the MECM tool suite: logging, CM site connection, settings persistence, window chrome, theming, dialogs.'
     PowerShellVersion = '5.1'
 
     FunctionsToExport = @(
@@ -26,6 +26,27 @@
 
         # Identity
         'Get-SuiteCommonVersion'
+
+        # Window chrome
+        'Get-TitleBarDragHeight'
+        'Get-InputAncestors'
+        'Test-IsWindowCommandPoint'
+        'Add-NativeTitleBarHitTestHook'
+        'Remove-NativeTitleBarHitTestHook'
+        'Install-TitleBarDragFallback'
+        'Save-WindowState'
+        'Restore-WindowState'
+
+        # Theming
+        'Initialize-SuiteTheme'
+        'Update-TitleBarBrushes'
+        'Update-SidebarButtonTheme'
+        'Set-ButtonTheme'
+        'Set-DialogTheme'
+
+        # Dialogs
+        'Show-ThemedMessage'
+        'Show-ConfirmDialog'
     )
 
     CmdletsToExport   = @()
