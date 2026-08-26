@@ -36,6 +36,8 @@ variable; a provider machine can be supplied via parameter or
 
 ## Launcher
 
+![Suite launcher](docs/launcher.png)
+
 `start-suite.ps1` is a thin WPF shell: one tile per installed suite
 tool, discovered as sibling folders of this repository (override the
 root in `suite.settings.json`), with each tool's version read from its
