@@ -5,8 +5,12 @@
 .DESCRIPTION
     Stages the payload from the local sibling repositories at their current
     HEAD via git archive, writes suite-manifest.json describing the suite and
-    each component, compiles installer\suite.nsi with makensis, and emits
+    each component, generates installer\stage\components.nsh from the same
+    component table, compiles installer\suite.nsi with makensis, and emits
     SuiteSetup-<version>.exe plus checksums.txt into installer\out.
+
+    Adding a component is one row in $Components: staging, the manifest, the
+    payload File blocks and the start-menu shortcuts all read that row.
 
     Test files are stripped from the payload: nothing under a Tests folder and
     no *.Tests.ps1 file reaches a shipped artifact.
@@ -38,6 +42,25 @@ $StageRoot    = Join-Path $InstallerDir 'stage'
 $NsiPath      = Join-Path $InstallerDir 'suite.nsi'
 $SiblingRoot  = Split-Path -Parent $RepoRoot
 
+# One row per shipped component. Folder is both the payload subfolder and the
+# install-root subfolder. VersionSource selects the version reader; a header
+# Version line trails the CHANGELOG in most tool repositories, so only the
+# repositories whose header is maintained use ScriptHeader.
+$Components = @(
+    [pscustomobject]@{ Folder = 'suite-core';   Repo = 'suite-core';   Entry = 'start-suite.ps1';                  Shortcut = 'AppPackager Suite Launcher';      VersionSource = 'ModuleManifest'; VersionFile = 'SuiteCommon\SuiteCommon.psd1' }
+    [pscustomobject]@{ Folder = 'app-packager'; Repo = 'app-packager'; Entry = 'start-apppackager.ps1';            Shortcut = 'App Packager';                    VersionSource = 'ScriptHeader';   VersionFile = '' }
+    [pscustomobject]@{ Folder = 'site-hygiene'; Repo = 'site-hygiene'; Entry = 'start-sitehygiene.ps1';            Shortcut = 'Site Hygiene';                    VersionSource = 'Changelog';      VersionFile = 'CHANGELOG.md' }
+    [pscustomobject]@{ Folder = 'collection-and-compliance-manager'; Repo = 'collection-and-compliance-manager'; Entry = 'start-ccm.ps1';                  Shortcut = 'Collection and Compliance Manager'; VersionSource = 'Changelog'; VersionFile = 'CHANGELOG.md' }
+    [pscustomobject]@{ Folder = 'collection-manager';                Repo = 'collection-manager';                Entry = 'start-collectionmanager.ps1';    Shortcut = 'Collection Manager';                VersionSource = 'Changelog'; VersionFile = 'CHANGELOG.md' }
+    [pscustomobject]@{ Folder = 'deployment-helper';                Repo = 'deployment-helper';                 Entry = 'start-deploymenthelper.ps1';     Shortcut = 'Deployment Helper';                 VersionSource = 'Changelog'; VersionFile = 'CHANGELOG.md' }
+    [pscustomobject]@{ Folder = 'detection-tester';                 Repo = 'detection-tester';                  Entry = 'start-detectiontester.ps1';      Shortcut = 'Detection Method Tester';           VersionSource = 'Changelog'; VersionFile = 'CHANGELOG.md' }
+    [pscustomobject]@{ Folder = 'dp-content-manager';               Repo = 'dp-content-manager';                Entry = 'start-dpcontentmgr.ps1';         Shortcut = 'DP Content Manager';                VersionSource = 'Changelog'; VersionFile = 'CHANGELOG.md' }
+    [pscustomobject]@{ Folder = 'installer-analysis';               Repo = 'installer-analysis';                Entry = 'start-installeranalysis.ps1';    Shortcut = 'Installer Analysis';                VersionSource = 'Changelog'; VersionFile = 'CHANGELOG.md' }
+    [pscustomobject]@{ Folder = 'maintenance-window-manager';       Repo = 'maintenance-window-manager';        Entry = 'start-maintenancewindowmgr.ps1'; Shortcut = 'Maintenance Window Manager';        VersionSource = 'Changelog'; VersionFile = 'CHANGELOG.md' }
+    [pscustomobject]@{ Folder = 'mecm-health-dashboard';            Repo = 'mecm-health-dashboard';             Entry = 'start-mecmhealthdashboard.ps1';  Shortcut = 'MECM Health Dashboard';             VersionSource = 'Changelog'; VersionFile = 'CHANGELOG.md' }
+    [pscustomobject]@{ Folder = 'supersedence-auditor';             Repo = 'supersedence-auditor';              Entry = 'start-supersedenceauditor.ps1';  Shortcut = 'Supersedence and Dependency Auditor'; VersionSource = 'Changelog'; VersionFile = 'CHANGELOG.md' }
+)
+
 function Write-Step {
     param([Parameter(Mandatory)][string]$Message)
     Write-Host ('[build] ' + $Message)
@@ -68,6 +91,19 @@ function Get-ScriptHeaderVersion {
         if ($line -match '^\s*Version\s*:\s*([0-9][0-9\.]*[0-9])\s*$') { return $Matches[1] }
     }
     return $null
+}
+
+function Get-ComponentVersion {
+    param(
+        [Parameter(Mandatory)][object]$Component,
+        [Parameter(Mandatory)][string]$StagedRoot
+    )
+    switch ($Component.VersionSource) {
+        'ScriptHeader'   { return Get-ScriptHeaderVersion -Path (Join-Path $StagedRoot $Component.Entry) }
+        'Changelog'      { return Get-ChangelogVersion    -Path (Join-Path $StagedRoot $Component.VersionFile) }
+        'ModuleManifest' { return Get-ManifestVersion     -Path (Join-Path $StagedRoot $Component.VersionFile) }
+        default          { throw ('Unknown version source: ' + $Component.VersionSource) }
+    }
 }
 
 function Export-RepoHead {
@@ -113,6 +149,40 @@ function Get-HeadCommit {
     return $sha.Trim()
 }
 
+# suite.nsi includes this file from the payload directory; it holds every
+# per-component line so the .nsi itself never names a component.
+function Write-ComponentsInclude {
+    param(
+        [Parameter(Mandatory)][object[]]$Table,
+        [Parameter(Mandatory)][string]$Path
+    )
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add('; Generated by tools\build-suite-installer.ps1. Do not edit.')
+    $lines.Add('')
+    $lines.Add('!macro SUITE_INSTALL_FILES')
+    foreach ($c in $Table) {
+        $lines.Add('  SetOutPath "$INSTDIR\' + $c.Folder + '"')
+        $lines.Add('  File /r "${PAYLOADDIR}\' + $c.Folder + '\*.*"')
+    }
+    $lines.Add('!macroend')
+    $lines.Add('')
+    $lines.Add('!macro SUITE_CREATE_SHORTCUTS')
+    foreach ($c in $Table) {
+        # SetOutPath fixes each shortcut's working directory at its own folder.
+        $lines.Add('  SetOutPath "$INSTDIR\' + $c.Folder + '"')
+        $lines.Add('  CreateShortcut "$StartMenuDir\' + $c.Shortcut + '.lnk" "$PSExe" \')
+        $lines.Add('    ' + "'" + '${PS_ARGS_PRE} "$INSTDIR\' + $c.Folder + '\' + $c.Entry + '"' + "'")
+    }
+    $lines.Add('!macroend')
+    $lines.Add('')
+    $lines.Add('!macro SUITE_DELETE_SHORTCUTS')
+    foreach ($c in $Table) {
+        $lines.Add('  Delete "$StartMenuDir\' + $c.Shortcut + '.lnk"')
+    }
+    $lines.Add('!macroend')
+    Set-Content -LiteralPath $Path -Value $lines -Encoding ASCII
+}
+
 if ([string]::IsNullOrWhiteSpace($SuiteVersion)) {
     $SuiteVersion = (Get-Date).ToString('yyyy.MM.dd')
 }
@@ -126,14 +196,11 @@ if (-not (Test-Path -LiteralPath $NsiPath)) {
     throw ('Installer script not found: ' + $NsiPath)
 }
 
-$components = @(
-    [pscustomobject]@{ Name = 'app-packager'; Path = Join-Path $SiblingRoot 'app-packager'; Entry = 'start-apppackager.ps1' }
-    [pscustomobject]@{ Name = 'site-hygiene'; Path = Join-Path $SiblingRoot 'site-hygiene'; Entry = 'start-sitehygiene.ps1' }
-    [pscustomobject]@{ Name = 'suite-core';   Path = $RepoRoot;                             Entry = 'start-suite.ps1' }
-)
-foreach ($component in $components) {
-    if (-not (Test-Path -LiteralPath $component.Path)) {
-        throw ('Component repository missing: ' + $component.Path)
+foreach ($component in $Components) {
+    $repoPath = if ($component.Repo -eq 'suite-core') { $RepoRoot } else { Join-Path $SiblingRoot $component.Repo }
+    Add-Member -InputObject $component -NotePropertyName 'RepoPath' -NotePropertyValue $repoPath -Force
+    if (-not (Test-Path -LiteralPath $repoPath)) {
+        throw ('Component repository missing: ' + $repoPath)
     }
 }
 
@@ -143,10 +210,10 @@ New-Item -ItemType Directory -Path $OutDir -Force | Out-Null
 
 $manifestComponents = New-Object System.Collections.Generic.List[object]
 
-foreach ($component in $components) {
-    Write-Step ('Staging ' + $component.Name + ' from ' + $component.Path)
-    $dest = Join-Path $StageRoot $component.Name
-    Export-RepoHead -RepoPath $component.Path -Destination $dest
+foreach ($component in $Components) {
+    Write-Step ('Staging ' + $component.Folder + ' from ' + $component.RepoPath)
+    $dest = Join-Path $StageRoot $component.Folder
+    Export-RepoHead -RepoPath $component.RepoPath -Destination $dest
 
     $stripped = Remove-TestArtifact -Root $dest
     if ($stripped -gt 0) { Write-Step ('  removed ' + $stripped + ' test file(s) from the payload') }
@@ -156,29 +223,22 @@ foreach ($component in $components) {
         throw ('Entry script missing from payload: ' + $entryPath)
     }
 
-    switch ($component.Name) {
-        'app-packager' { $version = Get-ScriptHeaderVersion -Path $entryPath }
-        'site-hygiene' { $version = Get-ChangelogVersion -Path (Join-Path $dest 'CHANGELOG.md') }
-        default {
-            # SuiteCommon.psd1 is the launcher's own version of record; the
-            # CHANGELOG headline can trail it between releases.
-            $version = Get-ManifestVersion -Path (Join-Path $dest 'SuiteCommon\SuiteCommon.psd1')
-            if (-not $version) { $version = Get-ChangelogVersion -Path (Join-Path $dest 'CHANGELOG.md') }
-        }
-    }
+    $version = Get-ComponentVersion -Component $component -StagedRoot $dest
     if ([string]::IsNullOrWhiteSpace($version)) {
-        throw ('Could not determine a version for ' + $component.Name)
+        throw ('Could not determine a version for ' + $component.Folder)
     }
 
     $fileCount = @(Get-ChildItem -LiteralPath $dest -Recurse -File).Count
-    Write-Step ('  version ' + $version + ', ' + $fileCount + ' file(s)')
+    Write-Step ('  version ' + $version + ' (' + $component.VersionSource + '), ' + $fileCount + ' file(s)')
 
     $manifestComponents.Add([ordered]@{
-        name    = $component.Name
-        version = $version
-        commit  = (Get-HeadCommit -RepoPath $component.Path)
-        entry   = $component.Entry
-        files   = $fileCount
+        name          = $component.Folder
+        version       = $version
+        versionSource = $component.VersionSource
+        commit        = (Get-HeadCommit -RepoPath $component.RepoPath)
+        entry         = $component.Entry
+        shortcut      = $component.Shortcut
+        files         = $fileCount
     })
 }
 
@@ -191,6 +251,13 @@ $manifest = [ordered]@{
 $manifestPath = Join-Path $StageRoot 'suite-manifest.json'
 ($manifest | ConvertTo-Json -Depth 5) | Set-Content -LiteralPath $manifestPath -Encoding ASCII
 Write-Step ('Wrote ' + $manifestPath)
+
+$includePath = Join-Path $StageRoot 'components.nsh'
+Write-ComponentsInclude -Table $Components -Path $includePath
+Write-Step ('Wrote ' + $includePath)
+
+$payloadBytes = (Get-ChildItem -LiteralPath $StageRoot -Recurse -File | Measure-Object -Property Length -Sum).Sum
+$payloadFiles = @(Get-ChildItem -LiteralPath $StageRoot -Recurse -File).Count
 
 $outFile = Join-Path $OutDir ('SuiteSetup-' + $SuiteVersion + '.exe')
 if (Test-Path -LiteralPath $outFile) { Remove-Item -LiteralPath $outFile -Force }
@@ -211,6 +278,8 @@ $checksums = Join-Path $OutDir 'checksums.txt'
 
 if (-not $KeepStage) { Remove-Item -LiteralPath $StageRoot -Recurse -Force }
 
+Write-Step ('Components: ' + $Components.Count)
+Write-Step ('Payload : ' + [Math]::Round($payloadBytes / 1MB, 2) + ' MB (' + $payloadFiles + ' files)')
 Write-Step ('Output  : ' + $outFile)
 Write-Step ('Size    : ' + [Math]::Round($size / 1MB, 2) + ' MB (' + $size + ' bytes)')
 Write-Step ('SHA256  : ' + $hash)

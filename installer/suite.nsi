@@ -43,6 +43,10 @@ VIAddVersionKey "LegalCopyright"  "MIT"
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
 
+; Per-component File, shortcut and shortcut-delete lines, generated into the
+; payload directory by tools\build-suite-installer.ps1 from its component table.
+!include "${PAYLOADDIR}\components.nsh"
+
 !define MUI_ABORTWARNING
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
@@ -71,25 +75,10 @@ Section "Suite" SecSuite
   SetOutPath "$INSTDIR"
   File "${PAYLOADDIR}\suite-manifest.json"
 
-  SetOutPath "$INSTDIR\app-packager"
-  File /r "${PAYLOADDIR}\app-packager\*.*"
-
-  SetOutPath "$INSTDIR\site-hygiene"
-  File /r "${PAYLOADDIR}\site-hygiene\*.*"
-
-  SetOutPath "$INSTDIR\suite-core"
-  File /r "${PAYLOADDIR}\suite-core\*.*"
+  !insertmacro SUITE_INSTALL_FILES
 
   CreateDirectory "$StartMenuDir"
-  SetOutPath "$INSTDIR\suite-core"
-  CreateShortcut "$StartMenuDir\AppPackager Suite Launcher.lnk" "$PSExe" \
-    '${PS_ARGS_PRE} "$INSTDIR\suite-core\start-suite.ps1"'
-  SetOutPath "$INSTDIR\app-packager"
-  CreateShortcut "$StartMenuDir\App Packager.lnk" "$PSExe" \
-    '${PS_ARGS_PRE} "$INSTDIR\app-packager\start-apppackager.ps1"'
-  SetOutPath "$INSTDIR\site-hygiene"
-  CreateShortcut "$StartMenuDir\Site Hygiene.lnk" "$PSExe" \
-    '${PS_ARGS_PRE} "$INSTDIR\site-hygiene\start-sitehygiene.ps1"'
+  !insertmacro SUITE_CREATE_SHORTCUTS
 
   SetOutPath "$INSTDIR"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
@@ -112,9 +101,7 @@ Function un.onInit
 FunctionEnd
 
 Section "Uninstall"
-  Delete "$StartMenuDir\AppPackager Suite Launcher.lnk"
-  Delete "$StartMenuDir\App Packager.lnk"
-  Delete "$StartMenuDir\Site Hygiene.lnk"
+  !insertmacro SUITE_DELETE_SHORTCUTS
   RMDir "$StartMenuDir"
 
   DeleteRegKey HKCU "${ARP_ROOT}"

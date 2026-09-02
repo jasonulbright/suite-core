@@ -51,8 +51,28 @@ configuration. The launcher embeds no tools and hosts no plugins.
 ## All-in-one installer
 
 `installer\suite.nsi` builds `SuiteSetup-<version>.exe`, a single
-installer carrying App Packager, Site Hygiene, and this repository (the
-launcher plus `SuiteCommon`).
+installer carrying every suite tool plus this repository (the launcher
+and `SuiteCommon`). Twelve components ship:
+
+| Component | Folder | Entry script |
+| --- | --- | --- |
+| AppPackager Suite Launcher | `suite-core\` | `start-suite.ps1` |
+| App Packager | `app-packager\` | `start-apppackager.ps1` |
+| Site Hygiene | `site-hygiene\` | `start-sitehygiene.ps1` |
+| Collection and Compliance Manager | `collection-and-compliance-manager\` | `start-ccm.ps1` |
+| Collection Manager | `collection-manager\` | `start-collectionmanager.ps1` |
+| Deployment Helper | `deployment-helper\` | `start-deploymenthelper.ps1` |
+| Detection Method Tester | `detection-tester\` | `start-detectiontester.ps1` |
+| DP Content Manager | `dp-content-manager\` | `start-dpcontentmgr.ps1` |
+| Installer Analysis | `installer-analysis\` | `start-installeranalysis.ps1` |
+| Maintenance Window Manager | `maintenance-window-manager\` | `start-maintenancewindowmgr.ps1` |
+| MECM Health Dashboard | `mecm-health-dashboard\` | `start-mecmhealthdashboard.ps1` |
+| Supersedence and Dependency Auditor | `supersedence-auditor\` | `start-supersedenceauditor.ps1` |
+
+The component list lives in one table in
+`tools\build-suite-installer.ps1`. That table drives staging, the
+manifest, and the generated `components.nsh` that `suite.nsi` includes,
+so adding a tool is one row.
 
 ```powershell
 .\tools\build-suite-installer.ps1                        # version = build date
@@ -71,7 +91,7 @@ What the installer does:
   Add/Remove Programs entry is written under `HKCU`. Nothing touches
   `Program Files`, the machine registry, or another user's profile.
 - **Creates a start-menu group, "AppPackager Suite"**, with a shortcut
-  for each tool and one for the launcher. Each shortcut runs
+  for each of the eleven tools and one for the launcher. Each shortcut runs
   `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <entry>.ps1`,
   so the tools start regardless of the machine's execution policy without
   changing that policy for anything else.

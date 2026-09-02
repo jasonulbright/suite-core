@@ -1,15 +1,22 @@
 # Changelog
 
-## [0.4.0] - 2026-09-02
+## [0.4.1] - 2026-09-02
+
+Supersedes the unreleased 0.4.0 entry, whose installer carried three
+components; the shipping installer carries twelve.
 
 ### Installer
 
-- **`installer\suite.nsi`** - all-in-one NSIS installer for the three
-  shipping suite components. `RequestExecutionLevel user`, no elevation,
+- **`installer\suite.nsi`** - all-in-one NSIS installer for all twelve
+  suite components: the launcher (`suite-core\`), `app-packager\`,
+  `site-hygiene\`, `collection-and-compliance-manager\`,
+  `collection-manager\`, `deployment-helper\`, `detection-tester\`,
+  `dp-content-manager\`, `installer-analysis\`,
+  `maintenance-window-manager\`, `mecm-health-dashboard\` and
+  `supersedence-auditor\`. `RequestExecutionLevel user`, no elevation,
   install root `%LOCALAPPDATA%\AppPackagerSuite` with one subfolder per
-  component (`app-packager\`, `site-hygiene\`, `suite-core\`). Start-menu
-  group "AppPackager Suite" carries three shortcuts, each targeting the
-  native `System32` `powershell.exe` with
+  component. Start-menu group "AppPackager Suite" carries twelve
+  shortcuts, each targeting the native `System32` `powershell.exe` with
   `-NoProfile -ExecutionPolicy Bypass -File <entry>.ps1`. HKCU ARP entry
   (`DisplayName`, `DisplayVersion`, `Publisher`, `InstallLocation`,
   `UninstallString`, `QuietUninstallString`, `EstimatedSize`, `NoModify`,
@@ -27,13 +34,20 @@
 - **`tools\build-suite-installer.ps1`** - stages the payload from the
   local sibling repositories at HEAD via `git archive`, strips `Tests`
   folders and `*.Tests.ps1` from the payload, reads each component
-  version (app-packager from the `start-apppackager.ps1` header,
-  site-hygiene from its CHANGELOG headline, suite-core from
-  `SuiteCommon.psd1`), writes `suite-manifest.json` (suite version, plus
-  name/version/commit/entry/file-count per component), compiles with
-  `makensis`, and emits `SuiteSetup-<version>.exe` and `checksums.txt`
-  into `installer\out\`. Suite version defaults to `yyyy.MM.dd`;
-  `-SuiteVersion` overrides.
+  version, writes `suite-manifest.json` (suite version, plus
+  name/version/versionSource/commit/entry/shortcut/file-count per
+  component), compiles with `makensis`, and emits
+  `SuiteSetup-<version>.exe` and `checksums.txt` into `installer\out\`.
+  Suite version defaults to `yyyy.MM.dd`; `-SuiteVersion` overrides.
+- **One component table drives the whole build.** `$Components` carries
+  folder, repository, entry script, shortcut name and version source per
+  row; staging, the manifest, and the generated `components.nsh` that
+  `suite.nsi` includes all read it, so adding a tool is one row rather
+  than edits in three places. `suite.nsi` names no component.
+- **Version source is per component and recorded in the manifest.**
+  `ScriptHeader` for app-packager, `ModuleManifest` for suite-core,
+  `Changelog` for the other ten - the header `Version` line in the tool
+  repositories trails their CHANGELOG headline.
 
 ### Remaining
 
