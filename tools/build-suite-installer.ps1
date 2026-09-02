@@ -188,6 +188,27 @@ function Write-ComponentsInclude {
         $lines.Add('  Delete "$StartMenuDir\' + $c.Shortcut + '.lnk"')
     }
     $lines.Add('!macroend')
+    $lines.Add('')
+    # Uninstall deletes only the files this build shipped; user state written
+    # after install stays, and each directory is removed only when empty.
+    $lines.Add('!macro SUITE_UNINSTALL_FILES')
+    $stageDir = Split-Path -Parent $Path
+    foreach ($c in $Table) {
+        $componentRoot = Join-Path $stageDir $c.Folder
+        $files = Get-ChildItem -LiteralPath $componentRoot -File -Recurse | Sort-Object FullName
+        foreach ($f in $files) {
+            $relative = $f.FullName.Substring($componentRoot.Length).TrimStart('\')
+            $lines.Add('  Delete "$INSTDIR\' + $c.Folder + '\' + $relative + '"')
+        }
+        $dirs = Get-ChildItem -LiteralPath $componentRoot -Directory -Recurse |
+            Sort-Object { $_.FullName.Length } -Descending
+        foreach ($d in $dirs) {
+            $relative = $d.FullName.Substring($componentRoot.Length).TrimStart('\')
+            $lines.Add('  RMDir "$INSTDIR\' + $c.Folder + '\' + $relative + '"')
+        }
+        $lines.Add('  RMDir "$INSTDIR\' + $c.Folder + '"')
+    }
+    $lines.Add('!macroend')
     Set-Content -LiteralPath $Path -Value $lines -Encoding ASCII
 }
 

@@ -108,17 +108,18 @@ your settings and window state (`*.json`), the `Logs\` folders, and the
 downloaded icon pack at `app-packager\Packagers\Icons\` - all of them
 survive an upgrade untouched.
 
-Uninstalling is different: it deletes the whole install root, user state
-included. Copy anything you want to keep out of
-`%LOCALAPPDATA%\AppPackagerSuite\` before uninstalling.
+Uninstalling removes only the files the installer shipped: preferences,
+logs, downloaded icons, and anything else written after install stay in
+place, and folders holding them survive. A component folder disappears
+entirely only when it holds nothing of yours.
 
 ### The SmartScreen warning
 
-The installer is not code-signed. The first time you run a new build,
-Windows will likely show a blue "Windows protected your PC" box that
-hides the Run button behind **More info**. This is Windows saying it has
-not seen this exact file before, not that it found anything wrong with
-it. Compare the file's SHA-256 against the `checksums.txt` published with
+The installer is unsigned. The first time you run a new build, Windows
+will likely show a blue "Windows protected your PC" box that hides the
+Run button behind **More info**. This is Windows saying it has not seen
+this exact file before, not that it found anything wrong with it.
+Compare the file's SHA-256 against the `checksums.txt` published with
 it, then choose **More info** followed by **Run anyway**. The warning
 returns for each new build, because every build is a new file.
 

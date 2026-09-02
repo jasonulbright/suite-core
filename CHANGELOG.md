@@ -49,11 +49,12 @@ components; the shipping installer carries twelve.
   `Changelog` for the other ten - the header `Version` line in the tool
   repositories trails their CHANGELOG headline.
 
-### Remaining
+### Changed
 
-- **The installer is unsigned.** SmartScreen warns on first run of each
-  new build until the file earns reputation; no code-signing certificate
-  is wired into the build.
+- **Uninstall preserves user state.** The uninstaller deletes only the
+  files the build shipped (a generated per-file list), removes
+  directories non-recursively, and leaves preferences, logs, icons, and
+  anything else written after install in place.
 
 ## [0.3.2] - 2026-09-01
 

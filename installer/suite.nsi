@@ -106,6 +106,11 @@ Section "Uninstall"
 
   DeleteRegKey HKCU "${ARP_ROOT}"
 
-  ; Removes the whole install root, user state included.
-  RMDir /r "$INSTDIR"
+  ; Only shipped files are deleted; user state written after install stays,
+  ; and every directory removal is non-recursive so a folder holding user
+  ; files survives.
+  !insertmacro SUITE_UNINSTALL_FILES
+  Delete "$INSTDIR\suite-manifest.json"
+  Delete "$INSTDIR\Uninstall.exe"
+  RMDir "$INSTDIR"
 SectionEnd
