@@ -98,12 +98,20 @@ function Get-ComponentVersion {
         [Parameter(Mandatory)][object]$Component,
         [Parameter(Mandatory)][string]$StagedRoot
     )
-    switch ($Component.VersionSource) {
-        'ScriptHeader'   { return Get-ScriptHeaderVersion -Path (Join-Path $StagedRoot $Component.Entry) }
-        'Changelog'      { return Get-ChangelogVersion    -Path (Join-Path $StagedRoot $Component.VersionFile) }
-        'ModuleManifest' { return Get-ManifestVersion     -Path (Join-Path $StagedRoot $Component.VersionFile) }
+    $version = switch ($Component.VersionSource) {
+        'ScriptHeader'   { Get-ScriptHeaderVersion -Path (Join-Path $StagedRoot $Component.Entry) }
+        'Changelog'      { Get-ChangelogVersion    -Path (Join-Path $StagedRoot $Component.VersionFile) }
+        'ModuleManifest' { Get-ManifestVersion     -Path (Join-Path $StagedRoot $Component.VersionFile) }
         default          { throw ('Unknown version source: ' + $Component.VersionSource) }
     }
+
+    # Drift guard: a Version header in the entry script that disagrees with
+    # the version of record ships a wrong number inside the payload.
+    $headerVersion = Get-ScriptHeaderVersion -Path (Join-Path $StagedRoot $Component.Entry)
+    if ($headerVersion -and $version -and $headerVersion -ne $version) {
+        Write-Warning ('{0}: entry header reads {1} but the version of record is {2}; fix the header before releasing.' -f $Component.Repo, $headerVersion, $version)
+    }
+    return $version
 }
 
 function Export-RepoHead {
