@@ -48,6 +48,60 @@ handed to each launch through the `SUITE_CM_PROVIDER` /
 to the provider variable, so tools connect without per-tool
 configuration. The launcher embeds no tools and hosts no plugins.
 
+## All-in-one installer
+
+`installer\suite.nsi` builds `SuiteSetup-<version>.exe`, a single
+installer carrying App Packager, Site Hygiene, and this repository (the
+launcher plus `SuiteCommon`).
+
+```powershell
+.\tools\build-suite-installer.ps1                        # version = build date
+.\tools\build-suite-installer.ps1 -SuiteVersion 1.0.0    # explicit version
+```
+
+The build stages each component from the local sibling repository at its
+current commit, so it packages what is checked in, not what is sitting
+dirty in the working tree. Output lands in `installer\out\` along with
+`checksums.txt`.
+
+What the installer does:
+
+- **Installs per user, with no elevation prompt.** Everything goes to
+  `%LOCALAPPDATA%\AppPackagerSuite\`, one folder per component, and the
+  Add/Remove Programs entry is written under `HKCU`. Nothing touches
+  `Program Files`, the machine registry, or another user's profile.
+- **Creates a start-menu group, "AppPackager Suite"**, with a shortcut
+  for each tool and one for the launcher. Each shortcut runs
+  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File <entry>.ps1`,
+  so the tools start regardless of the machine's execution policy without
+  changing that policy for anything else.
+- **Writes `suite-manifest.json`** at the install root, recording the
+  suite version and the version and commit of each bundled component.
+- **Supports `/S`** for a silent install, and the uninstaller supports it
+  too.
+
+### Upgrading
+
+Run the newer installer over the existing install. Files that ship in the
+package are replaced; files that do not ship are left alone. That covers
+your settings and window state (`*.json`), the `Logs\` folders, and the
+downloaded icon pack at `app-packager\Packagers\Icons\` - all of them
+survive an upgrade untouched.
+
+Uninstalling is different: it deletes the whole install root, user state
+included. Copy anything you want to keep out of
+`%LOCALAPPDATA%\AppPackagerSuite\` before uninstalling.
+
+### The SmartScreen warning
+
+The installer is not code-signed. The first time you run a new build,
+Windows will likely show a blue "Windows protected your PC" box that
+hides the Run button behind **More info**. This is Windows saying it has
+not seen this exact file before, not that it found anything wrong with
+it. Compare the file's SHA-256 against the `checksums.txt` published with
+it, then choose **More info** followed by **Run anyway**. The warning
+returns for each new build, because every build is a new file.
+
 ## Consuming
 
 A tool module loads its vendored copy once, globally:

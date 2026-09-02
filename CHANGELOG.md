@@ -1,5 +1,54 @@
 # Changelog
 
+## [0.4.0] - 2026-09-02
+
+### Installer
+
+- **`installer\suite.nsi`** - all-in-one NSIS installer for the three
+  shipping suite components. `RequestExecutionLevel user`, no elevation,
+  install root `%LOCALAPPDATA%\AppPackagerSuite` with one subfolder per
+  component (`app-packager\`, `site-hygiene\`, `suite-core\`). Start-menu
+  group "AppPackager Suite" carries three shortcuts, each targeting the
+  native `System32` `powershell.exe` with
+  `-NoProfile -ExecutionPolicy Bypass -File <entry>.ps1`. HKCU ARP entry
+  (`DisplayName`, `DisplayVersion`, `Publisher`, `InstallLocation`,
+  `UninstallString`, `QuietUninstallString`, `EstimatedSize`, `NoModify`,
+  `NoRepair`). `/S` silent install and uninstall.
+- **Upgrade preserves user state without a backup-restore cycle.** Payload
+  files overwrite; files absent from the payload are untouched, and every
+  preserved class (`*.json` per app folder and its `Packagers` subfolder,
+  `Logs\`, `Packagers\Icons\`) is absent from the payload because each is
+  gitignored in its source repository. Same preserve set as
+  app-packager's `install.ps1` `Get-PreservedStateFile`, reached without
+  copying state out and back.
+
+### Build
+
+- **`tools\build-suite-installer.ps1`** - stages the payload from the
+  local sibling repositories at HEAD via `git archive`, strips `Tests`
+  folders and `*.Tests.ps1` from the payload, reads each component
+  version (app-packager from the `start-apppackager.ps1` header,
+  site-hygiene from its CHANGELOG headline, suite-core from
+  `SuiteCommon.psd1`), writes `suite-manifest.json` (suite version, plus
+  name/version/commit/entry/file-count per component), compiles with
+  `makensis`, and emits `SuiteSetup-<version>.exe` and `checksums.txt`
+  into `installer\out\`. Suite version defaults to `yyyy.MM.dd`;
+  `-SuiteVersion` overrides.
+
+### Remaining
+
+- **The installer is unsigned.** SmartScreen warns on first run of each
+  new build until the file earns reputation; no code-signing certificate
+  is wired into the build.
+
+## [0.3.2] - 2026-09-01
+
+### Fixed
+
+- **Launcher** - maximized-window restore and background bootstrap
+  errors surfaced instead of swallowed. (Entry backfilled; the release
+  shipped without one.)
+
 ## [0.3.1] - 2026-08-16
 
 ### Added
