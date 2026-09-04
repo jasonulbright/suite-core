@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.4.3] - 2026-09-04
+
+### SuiteCommon
+
+- **`Repair-WindowsPowerShellModulePath`.** A Windows PowerShell process
+  launched from PowerShell 7 inherits the 7.x module directories at the
+  front of `PSModulePath`; every runspace opened later and every child
+  `powershell.exe` then autoloads a `Microsoft.PowerShell.Utility` that
+  carries no `Get-FileHash` or `ConvertFrom-Json` in 5.1. The module
+  strips those roots and puts `$PSHOME\Modules` first at import time, so
+  every tool that imports SuiteCommon is covered before it opens a
+  runspace; `New-SuiteBgRunspace` repeats the repair before it creates
+  the runspace.
+- **Bootstrap failures throw.** `New-SuiteBgRunspace` disposes the
+  runspace and rethrows when the module import inside it fails, instead
+  of handing back a runspace whose later commands fail as unknown.
+
+### Installer
+
+- **Component refresh.** The suite installer carries app-packager
+  1.5.1.1 (Inno Setup drops read from the compiled header, Apache
+  NetBeans packager, the per-user misclassification of Inno Setup 6
+  stubs fixed), installer-analysis 1.3.1.0 (Inno Setup header decoding
+  for data versions 5.x through 7.0.0.3), site-hygiene 0.8.1,
+  collection-and-compliance-manager 1.0.2, collection-manager 1.2.3,
+  deployment-helper 1.2.3, detection-tester 1.2.3, dp-content-manager
+  1.2.3, maintenance-window-manager 1.2.3, mecm-health-dashboard 1.3.3
+  and supersedence-auditor 1.0.1; every component vendors SuiteCommon
+  0.4.3 (supersedence-auditor carries the same repair inline), and the
+  version labels of every tool read their entry script header.
+  Component versions and commits are in `suite-manifest.json` as before.
+
 ## [0.4.2] - 2026-09-04
 
 ### Installer
