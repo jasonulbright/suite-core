@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.5] - 2026-09-04
+
+### Installer
+
+- **Component refresh.** The suite installer carries app-packager 1.5.1.3
+  (the Options window reports how GitHub API calls authenticate, and a
+  signed-in GitHub CLI login is used for those calls). The other eleven
+  components are unchanged from 0.4.4. Component versions and commits are
+  in `suite-manifest.json` as before.
+
 ## [0.4.4] - 2026-09-04
 
 ### Installer
