@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.7] - 2026-09-04
+
+### Installer
+
+- **Component refresh.** The suite installer carries app-packager 1.5.1.4
+  (install mode toggle for switchable installers in the drop preview) and
+  installer-analysis 1.3.2.0 (both install modes reported for NSIS and
+  Inno Setup installers that accept a mode switch). The other ten
+  components are unchanged from 0.4.6. Component versions and commits are
+  in `suite-manifest.json` as before.
+
 ## [0.4.6] - 2026-09-04
 
 ### Build
