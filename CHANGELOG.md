@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.2] - 2026-09-04
+
+### Installer
+
+- **Component refresh.** The suite installer carries app-packager
+  1.5.1.0 (NSIS installers analyzed from their compiled script, per-user
+  drops staged as user-context deployments, PowerShell 7 module-path
+  isolation, window sizing) and installer-analysis 1.3.0.1 (NSIS header
+  decoding, analysis runspace module-path fix). Component versions and
+  commits are in `suite-manifest.json` as before.
+
+### Build
+
+- **Entry-header drift guard.** `Get-ComponentVersion` warns when a
+  component's entry script `Version` header disagrees with its version
+  of record, so a stale header cannot ship inside the payload unnoticed.
+
 ## [0.4.1] - 2026-09-02
 
 Supersedes the unreleased 0.4.0 entry, whose installer carried three
