@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.4.8] - 2026-09-04
+
+### Installer
+
+- Carry app-packager 1.5.1.5 and installer-analysis 1.3.3.0; the other ten components are unchanged.
+
 ## [0.4.7] - 2026-09-04
 
 ### Installer
