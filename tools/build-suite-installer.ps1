@@ -24,12 +24,33 @@
 
 .PARAMETER KeepStage
     Leave the staging folder in place for inspection.
+
+.PARAMETER SkipReleaseCheck
+    Skip the two remote checks (tag on origin, GitHub release) for every
+    component; the local checks (clean tree, HEAD at the highest v* tag,
+    tag version equals payload version) still run.
+
+.PARAMETER AllowUnpublished
+    Component repositories whose release this build is part of. Their
+    remote checks are waived because the tag and release land after the
+    installer is built and verified.
+
+.PARAMETER ValidateOnly
+    Stage and check every component, then stop before compiling.
 #>
 [CmdletBinding()]
 param(
     [string]$SuiteVersion,
     [string]$MakeNsis = 'C:\Program Files (x86)\NSIS\makensis.exe',
-    [switch]$KeepStage
+    [switch]$KeepStage,
+    # Skips the remote checks (tag on origin, GitHub release) for an offline build.
+    [switch]$SkipReleaseCheck,
+    # Component repositories whose release this very build is part of: the
+    # remote checks are waived for them alone, since tag and release land after
+    # the installer is built and verified.
+    [string[]]$AllowUnpublished = @(),
+    # Runs the component checks and stops before compiling.
+    [switch]$ValidateOnly
 )
 
 Set-StrictMode -Version Latest
@@ -157,6 +178,76 @@ function Get-HeadCommit {
     return $sha.Trim()
 }
 
+function Get-LatestReleaseTag {
+    # Highest v-prefixed tag by version order; the installer may only carry
+    # a component at a commit that has been released under such a tag.
+    param([Parameter(Mandatory)][string]$RepoPath)
+    $tags = @(& git -C $RepoPath tag --list 'v*' --sort=-v:refname)
+    if ($LASTEXITCODE -ne 0) { throw ('git tag failed for ' + $RepoPath) }
+    return ($tags | Where-Object { $_ -match '^v\d' } | Select-Object -First 1)
+}
+
+function Test-ComponentRelease {
+    <#
+    .SYNOPSIS
+        Refuses a component whose checkout is not exactly its latest release.
+    .DESCRIPTION
+        Every component repository must be clean, checked out at its highest
+        v* tag, and that tag's version must equal the version the payload
+        carries. Unless -SkipReleaseCheck, the tag must also exist on origin
+        and have a GitHub release. Any miss throws, so a bumped component
+        that was never released, or a stale checkout of one that was, cannot
+        ship inside the suite installer.
+    #>
+    param(
+        [Parameter(Mandatory)][object]$Component,
+        [Parameter(Mandatory)][string]$StagedVersion,
+        [switch]$Offline
+    )
+    $repoPath = $Component.RepoPath
+    $name = $Component.Repo
+
+    $dirty = @(& git -C $repoPath status --porcelain)
+    if ($dirty.Count -gt 0) {
+        throw ('{0}: working tree has {1} uncommitted change(s); commit and release them or discard them before building the suite.' -f $name, $dirty.Count)
+    }
+
+    $tag = Get-LatestReleaseTag -RepoPath $repoPath
+    if (-not $tag) { throw ('{0}: no v* release tag found.' -f $name) }
+    $tagVersion = $tag.Substring(1)
+    if ($tagVersion -ne $StagedVersion) {
+        throw ('{0}: payload carries version {1} but the latest release tag is {2}; release the bump (or check out the tag) before building the suite.' -f $name, $StagedVersion, $tag)
+    }
+
+    $headSha = Get-HeadCommit -RepoPath $repoPath
+    $tagSha = (& git -C $repoPath rev-list -n 1 $tag).Trim()
+    if ($headSha -ne $tagSha) {
+        $ahead = (& git -C $repoPath rev-list --count ($tag + '..HEAD')).Trim()
+        throw ('{0}: HEAD ({1}) is not the {2} commit ({3}); {4} commit(s) past the tag would ship unreleased.' -f $name, $headSha.Substring(0, 7), $tag, $tagSha.Substring(0, 7), $ahead)
+    }
+
+    $releaseState = 'tag only (remote checks skipped)'
+    if (-not $Offline) {
+        $remoteTag = @(& git -C $repoPath ls-remote --tags origin ('refs/tags/' + $tag) 2>$null)
+        if ($LASTEXITCODE -ne 0 -or $remoteTag.Count -eq 0) {
+            throw ('{0}: tag {1} is not on origin; push it before building the suite.' -f $name, $tag)
+        }
+        $releaseState = 'tag on origin'
+        $gh = Get-Command gh.exe -ErrorAction SilentlyContinue
+        if ($gh) {
+            $remoteUrl = (& git -C $repoPath remote get-url origin).Trim()
+            if ($remoteUrl -match 'github\.com[:/]([^/]+/[^/.]+)') {
+                $null = & $gh.Source release view $tag --repo $Matches[1] --json tagName 2>$null
+                if ($LASTEXITCODE -ne 0) {
+                    throw ('{0}: tag {1} has no GitHub release on {2}; publish it before building the suite.' -f $name, $tag, $Matches[1])
+                }
+                $releaseState = 'GitHub release ' + $tag
+            }
+        }
+    }
+    return $releaseState
+}
+
 # suite.nsi includes this file from the payload directory; it holds every
 # per-component line so the .nsi itself never names a component.
 function Write-ComponentsInclude {
@@ -257,8 +348,10 @@ foreach ($component in $Components) {
         throw ('Could not determine a version for ' + $component.Folder)
     }
 
+    $releaseState = Test-ComponentRelease -Component $component -StagedVersion $version -Offline:($SkipReleaseCheck -or ($AllowUnpublished -contains $component.Repo))
+
     $fileCount = @(Get-ChildItem -LiteralPath $dest -Recurse -File).Count
-    Write-Step ('  version ' + $version + ' (' + $component.VersionSource + '), ' + $fileCount + ' file(s)')
+    Write-Step ('  version ' + $version + ' (' + $component.VersionSource + '), ' + $releaseState + ', ' + $fileCount + ' file(s)')
 
     $manifestComponents.Add([ordered]@{
         name          = $component.Folder
@@ -269,6 +362,14 @@ foreach ($component in $Components) {
         shortcut      = $component.Shortcut
         files         = $fileCount
     })
+}
+
+Write-Step ('All ' + $Components.Count + ' components are at their latest release: ' + (($manifestComponents | ForEach-Object { $_.name + ' ' + $_.version }) -join ', '))
+
+if ($ValidateOnly) {
+    if (-not $KeepStage) { Remove-Item -LiteralPath $StageRoot -Recurse -Force }
+    Write-Step 'ValidateOnly: stopping before the installer is compiled.'
+    return
 }
 
 $manifest = [ordered]@{

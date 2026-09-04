@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.4.6] - 2026-09-04
+
+### Build
+
+- **Component release guard.** `build-suite-installer.ps1` refuses to
+  build unless every component repository is clean, checked out at its
+  highest `v*` tag, and that tag's version equals the version the payload
+  carries; the tag must also exist on origin and have a GitHub release
+  (`-SkipReleaseCheck` waives the two remote checks for an offline build).
+  A component bumped but never released, or a stale checkout of one that
+  was, stops the build with the component and the two versions named.
+  `-ValidateOnly` runs the checks for all twelve components and stops
+  before compiling.
+
+### Installer
+
+- **Component refresh.** The suite installer carries the same eleven
+  tool versions as 0.4.5; only the launcher (this repository) changed.
+
 ## [0.4.5] - 2026-09-04
 
 ### Installer
