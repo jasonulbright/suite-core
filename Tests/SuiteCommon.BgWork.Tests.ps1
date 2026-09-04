@@ -49,17 +49,45 @@ Describe 'New-SuiteBgRunspace' {
 
 Describe 'New-SuiteBgRunspace failure surfacing' {
 
-    It 'names the real bootstrap failure in the log instead of swallowing it' {
+    It 'names the real bootstrap failure, logs it, and throws instead of returning a broken runspace' {
         $log = Join-Path $TestDrive 'bginit.log'
         Initialize-Logging -LogPath $log
-        $rs = New-SuiteBgRunspace -ModulePath (Join-Path $TestDrive 'no-such-module.psd1') 6>$null
+        { New-SuiteBgRunspace -ModulePath (Join-Path $TestDrive 'no-such-module.psd1') 6>$null } | Should -Throw '*no-such-module*'
+        $content = Get-Content $log -Raw
+        $content | Should -Match 'Background runspace initialization failed'
+        $content | Should -Match 'no-such-module'
+    }
+}
+
+Describe 'Repair-WindowsPowerShellModulePath' {
+
+    It 'drops PowerShell 7 module roots and keeps the Windows PowerShell ones first' {
+        $saved = $env:PSModulePath
         try {
-            $rs.RunspaceStateInfo.State | Should -Be 'Opened'
-            $content = Get-Content $log -Raw
-            $content | Should -Match 'Background runspace initialization error'
-            $content | Should -Match 'no-such-module'
+            $winPs = Join-Path $PSHOME 'Modules'
+            $env:PSModulePath = 'C:\Users\x\Documents\PowerShell\Modules;C:\Program Files\PowerShell\Modules;c:\program files\windowsapps\microsoft.powershell_7.6.5.0_x64__8wekyb3d8bbwe\Modules;C:\Program Files\WindowsPowerShell\Modules;' + $winPs + ';C:\bin'
+            Repair-WindowsPowerShellModulePath | Should -BeTrue
+            $roots = @($env:PSModulePath -split ';')
+            $roots | Should -Not -Contain 'C:\Program Files\PowerShell\Modules'
+            $roots | Should -Not -Contain 'C:\Users\x\Documents\PowerShell\Modules'
+            ($roots | Where-Object { $_ -match 'microsoft\.powershell_' }) | Should -BeNullOrEmpty
+            $roots | Should -Contain 'C:\Program Files\WindowsPowerShell\Modules'
+            $roots | Should -Contain $winPs
+            $roots | Should -Contain 'C:\bin'
         } finally {
-            Complete-RunspaceClose -Runspace $rs
+            $env:PSModulePath = $saved
+        }
+    }
+
+    It 'reports no change on a clean path and never drops WindowsPowerShell roots' {
+        $saved = $env:PSModulePath
+        try {
+            $winPs = Join-Path $PSHOME 'Modules'
+            $env:PSModulePath = 'C:\Program Files\WindowsPowerShell\Modules;' + $winPs
+            Repair-WindowsPowerShellModulePath | Should -BeFalse
+            $env:PSModulePath | Should -Be ('C:\Program Files\WindowsPowerShell\Modules;' + $winPs)
+        } finally {
+            $env:PSModulePath = $saved
         }
     }
 }
