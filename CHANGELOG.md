@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.4.4] - 2026-09-04
+
+### Installer
+
+- **Component refresh.** The suite installer carries app-packager 1.5.1.2
+  (Slack staged as the vendor's MSIX, Defraggler and ShareX following their
+  vendors' source changes, Wireshark staged from its compiled installer
+  script, GitHub API calls authenticated through `GITHUB_TOKEN`). The other
+  eleven components are unchanged from 0.4.3. Component versions and
+  commits are in `suite-manifest.json` as before.
+
 ## [0.4.3] - 2026-09-04
 
 ### SuiteCommon
